@@ -2,7 +2,7 @@ function inicializarAlgoritmo() {
     let populacao = new Array();
     let notas = new Array();
 
-    const medicos = gerarMedicos(9);
+    const medicos = gerarMedicos(7);
 
     function gerarMedicos(qtdCG) {
         const TOTAL_MEDICOS = 25;
@@ -58,6 +58,7 @@ function inicializarAlgoritmo() {
             medicosRepetidosUnidade: 0,
             conflitoTurno: 0,
             cargaHoraria: 0,
+            muitoClinico: 0,
             total: 0
         };
 
@@ -105,7 +106,8 @@ function inicializarAlgoritmo() {
             penalidades.faltaClinico +
             penalidades.medicosRepetidosUnidade +
             penalidades.conflitoTurno +
-            penalidades.cargaHoraria;
+            penalidades.cargaHoraria +
+            penalidades.muitoClinico;
 
         return penalidades;
     }
@@ -122,31 +124,34 @@ function inicializarAlgoritmo() {
         }
 
         if (contagemCG > 1) {
-            penalidades.faltaClinico += (contagemCG - 1) * config.mediumPen;
+            penalidades.muitoClinico += (contagemCG - 1) * config.mediumPen;
         }
     }
 
     function regraMedicosDistintosUnidade(total, penalidades, config) {
         if (total < 3) {
             penalidades.medicosRepetidosUnidade += 
-                (3 - total) * config.hardPen;
+                (3 - total) * config.heavyPen;
         }
     }
 
     function regraConflitoInternoTurno(total, penalidades, config) {
-        if (total < 9) {
+        let maxDistintos = 9;
+
+        if (total < maxDistintos) {
             penalidades.conflitoTurno += 
-                (9 - total) * config.hardPen;
+                (maxDistintos - total) * config.heavyPen;
         }
     }
 
     function regraCargaHorariaSemanal(turnosPorMedico, penalidades, config) {
-        let turnosMax = 7;
+        let turnosMax = 5; // 8 horas por dia
+        // let turnosMax = 6.66; // 6 horas por dia
 
         for (let i = 0; i < turnosPorMedico.length; i++) {
             if (turnosPorMedico[i] > turnosMax) {
                 penalidades.cargaHoraria += 
-                    Math.round((turnosPorMedico[i] - turnosMax) * config.mediumPen, 0);
+                    Math.round((turnosPorMedico[i] - turnosMax) * config.softPen, 0);
             }
         }
     }
@@ -154,19 +159,10 @@ function inicializarAlgoritmo() {
     function avaliaCromossomo() {
         const CONFIGPEN = {
             softPen: 1,
-            mediumPen: 4,
-            hardPen: 8,
-            heavyPen: 16
+            mediumPen: 2,
+            hardPen: 4,
+            heavyPen: 10
         }
-
-        let penalidades = {
-            repeticaoTurno: 0,
-            faltaClinico: 0,
-            medicosRepetidosUnidade: 0,
-            conflitoTurno: 0,
-            cargaHoraria: 0,
-            total: 0
-        }; 
 
         let populacaoComNotas = new Array();
 
@@ -184,10 +180,10 @@ function inicializarAlgoritmo() {
     }
 
     function selecaoTorneio(populacaoComNotas, tamanhoTorneio = 10) {
-        let melhorIdx = Math.floor(Math.random() * populacaoComNotas.length);
+        let melhorIdx = 0;
         
         for (let i = 1; i < tamanhoTorneio; i++) {
-            const randomIdx = Math.floor(Math.random() * populacaoComNotas.length);
+            const randomIdx = getRandomInt(populacaoComNotas.length);
             if (populacaoComNotas[randomIdx].nota < populacaoComNotas[melhorIdx].nota) {
                 melhorIdx = randomIdx;
             }
@@ -196,44 +192,23 @@ function inicializarAlgoritmo() {
         return populacaoComNotas[melhorIdx].cromossomo;
     }
 
-    function selecaoRoleta(populacaoComNotas) {
-        // Inverte as notas para que maiores valores = melhor fitness
-        const maxNota = Math.max(...populacaoComNotas.map(p => p.nota));
-        const fitnessInvertido = populacaoComNotas.map(p => maxNota - p.nota + 1);
-        const somaFitness = fitnessInvertido.reduce((a, b) => a + b, 0);
-        
-        let random = Math.random() * somaFitness;
-        for (let i = 0; i < populacaoComNotas.length; i++) {
-            random -= fitnessInvertido[i];
-            if (random <= 0) {
-                return populacaoComNotas[i].cromossomo;
-            }
-        }
-        
-        return populacaoComNotas[populacaoComNotas.length - 1].cromossomo;
-    }
-
-    // ==================== CROSSOVER ====================
-    function crossoverPorTurno(pai1, pai2) {
+    function crossover(pai1, pai2, crossoverPoint = 9) {
         const filho1 = [];
         const filho2 = [];
 
-        let crossover = 9;
-
-        for (let i = 0; i < pai1.length; i += crossover) {
+        for (let i = 0; i < pai1.length; i += crossoverPoint) {
             if (Math.random() < 0.5) {
-                filho1.push(...pai1.slice(i, i + crossover));
-                filho2.push(...pai2.slice(i, i + crossover));
+                filho1.push(...pai1.slice(i, i + crossoverPoint));
+                filho2.push(...pai2.slice(i, i + crossoverPoint));
             } else {
-                filho1.push(...pai2.slice(i, i + crossover));
-                filho2.push(...pai1.slice(i, i + crossover));
+                filho1.push(...pai2.slice(i, i + crossoverPoint));
+                filho2.push(...pai1.slice(i, i + crossoverPoint));
             }
         }
 
         return [filho1, filho2];
     }
 
-    // ==================== MUTAÇÃO ====================
     function mutacao(cromossomo, probMutacao) {
         const cromossomoMutado = [...cromossomo];
         
@@ -246,29 +221,43 @@ function inicializarAlgoritmo() {
         return cromossomoMutado;
     }
 
-    // ==================== ELITISMO ====================
-    function aplicaElitismo(populacaoAtual, populacaoComNotas, numElites) {
-        const melhores = populacaoComNotas.slice(0, numElites);
-        const novaPopulacao = populacaoAtual.slice(numElites);
-        
-        return [...melhores.map(p => p.cromossomo), ...novaPopulacao];
+    function imprimirMelhorIndividuo(melhorSolucao, medicos) {
+        const cromossomo = melhorSolucao.cromossomo;
+
+        console.log(`\n===== MELHOR INDIVÍDUO =====`);
+        console.log(`Geração: ${melhorSolucao.geracao + 1}`);
+        console.log(`Fitness: ${melhorSolucao.nota}`);
+        console.log("Detalhes das penalidades:");
+        console.table(melhorSolucao.detalhes);
+
+        const dias = 7;
+        const unidades = 3;
+        const turnos = 3;
+        const medicosPorTurno = 3;
+
+        let idx = 0;
+
+        for (let dia = 0; dia < dias; dia++) {
+            console.log(`\n--- Dia ${dia + 1} ---`);
+            for (let unidade = 0; unidade < unidades; unidade++) {
+                console.log(`  Unidade ${unidade + 1}:`);
+                for (let turno = 0; turno < turnos; turno++) {
+                    const idsTurno = cromossomo.slice(idx, idx + medicosPorTurno);
+                    const nomesTurno = idsTurno.map(id => `${medicos[id].especialidade}-${medicos[id].id}`);
+                    console.log(`    Turno ${turno + 1}: ${nomesTurno.join(", ")}`);
+                    idx += medicosPorTurno;
+                }
+            }
+        }
     }
 
-    // ==================== LOOP PRINCIPAL DO ALGORITMO GENÉTICO ====================
     function executarAlgoritmoGenetico() {
-        const CONFIGPEN = {
-            softPen: 1,
-            mediumPen: 8,
-            hardPen: 40,
-            heavyPen: 120
-        };
-
-        const popInicial = 100;
+        const popInicial = 300;
         const probMutacao = 0.04;
         const probCrossover = 0.7;
-        const numGeracoes = 1000;
+        const numGeracoes = 2000;
         const comElitismo = true;
-        const numElites = 7;
+        const porcentagemElite = 0.02;
 
         geraPopulacao(popInicial);
 
@@ -280,14 +269,21 @@ function inicializarAlgoritmo() {
 
             const melhorDaGeracao = populacaoComNotas[0];
 
+            
             if (!melhorSolucao || melhorDaGeracao.nota < melhorSolucao.nota) {
                 melhorSolucao = { ...melhorDaGeracao, geracao };
+            }
+            
+            if (geracao === 0 ) {
+                console.log("Primeira geração:");
+                console.table(melhorSolucao.detalhes);
             }
 
             let novaPopulacao = [];
 
             if (comElitismo) {
-                const melhores = populacaoComNotas.slice(0, numElites);
+                const melhores = populacaoComNotas.slice
+                    (0, Math.floor(porcentagemElite * popInicial));
                 novaPopulacao = [...melhores.map(p => p.cromossomo)];
             }
 
@@ -299,7 +295,7 @@ function inicializarAlgoritmo() {
                 let filho2 = pai2;
 
                 if (Math.random() < probCrossover) {
-                    [filho1, filho2] = crossoverPorTurno(pai1, pai2);
+                    [filho1, filho2] = crossover(pai1, pai2);
                 }
 
                 filho1 = mutacao(filho1, probMutacao);
@@ -314,28 +310,14 @@ function inicializarAlgoritmo() {
             populacao = novaPopulacao.slice(0, popInicial);
         }
 
-            console.log("Melhor solução:");
-            console.log("Geração:", melhorSolucao.geracao + 1);
-            console.log("Fitness:", melhorSolucao.nota);
-            console.log("Detalhes:");
-            console.table(melhorSolucao.detalhes);
+            imprimirMelhorIndividuo(melhorSolucao, medicos);
     }
 
-    // ==================== TESTES E EXECUÇÃO ====================
     populacao = [];
     const solucaoFinal = executarAlgoritmoGenetico();
 
     return solucaoFinal;
-
-    
 }
 
-// ==================== EXECUÇÃO ====================
 console.log("SISTEMA DE ESCALONAMENTO DE MEDICOS COM ALGORITMO GENETICO");
-console.log("");
-
 const resultado = inicializarAlgoritmo();
-
-if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { inicializarAlgoritmo, resultado };
-}
